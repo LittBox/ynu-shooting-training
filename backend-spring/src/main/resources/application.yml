@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: ynu-shotting-booking
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres?currentSchema=%22ynu-shooting%22}
+    username: ${DB_USER:${user.name}}
+    password: ${DB_PASSWORD:}
+    hikari:
+      # 即使 DB_URL 没有 currentSchema，每条连接也只查询项目 schema。
+      connection-init-sql: SET search_path TO "ynu-shooting"
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    properties:
+      hibernate:
+        # 名称含连字符，保留 SQL 标识符引号；所有 JPA 实体统一使用此 schema。
+        default_schema: '"ynu-shooting"'
+    open-in-view: false
+  task:
+    scheduling:
+      pool:
+        size: 2
+  h2:
+    console:
+      enabled: false
+server:
+  port: ${PORT:8080}
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration-ms: 86400000
+auth:
+  mode: ${AUTH_MODE:wechat}
+  wechat-app-id: ${WECHAT_APP_ID:}
+  wechat-app-secret: ${WECHAT_APP_SECRET:}
+booking:
+  daily-limit: 3
+  weekly-limit: 10
+  advance-days: 7
+  cancel-free-hours: 12
+  cancel-late-hours: 1
+  checkin-before-min: 30
+  checkin-timeout-min: 10
+logging:
+  level:
+    com.ynu.shoting: INFO
+wechat-reminders:
+  enabled: ${WECHAT_REMINDERS_ENABLED:false}
+  lead-minutes: 15
+  miniprogram-state: ${WECHAT_REMINDERS_STATE:formal}
+  location: ${WECHAT_REMINDERS_LOCATION:楠院二栋C307}
+  training:
+    template-id: ${WECHAT_TRAINING_TEMPLATE_ID:tG676ieJiCyCYOqkxXA2wS2IkZX_ruvoK1atgECpLmE}
+    fields-json: '${WECHAT_TRAINING_FIELDS:{"thing4":"title","date3":"start","time16":"end","thing25":"location"}}'
+  duty:
+    template-id: ${WECHAT_DUTY_TEMPLATE_ID:tG676ieJiCyCYOqkxXA2wS2IkZX_ruvoK1atgECpLmE}
+    fields-json: '${WECHAT_DUTY_FIELDS:{"thing4":"title","date3":"start","time16":"end","thing25":"location"}}'

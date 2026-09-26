@@ -1,0 +1,30 @@
+[Unit]
+Description=YNU shooting booking backend
+After=network.target postgresql.service
+Wants=postgresql.service
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=ynu-backend
+Group=ynu-backend
+WorkingDirectory=/opt/ynu-shooting
+EnvironmentFile=/etc/ynu-shooting/backend.env
+ExecStartPre=/opt/ynu-shooting/check-config.sh
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m -XX:+ExitOnOutOfMemoryError -jar /opt/ynu-shooting/backend.jar --spring.profiles.active=server --spring.config.additional-location=file:/etc/ynu-shooting/application-server.yml
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ynu-shooting
+
+[Install]
+WantedBy=multi-user.target

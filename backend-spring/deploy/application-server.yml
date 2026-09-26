@@ -1,0 +1,30 @@
+# 云端外部配置：/etc/ynu-shooting/application-server.yml
+# 密钥由 systemd EnvironmentFile 提供，不写入本文件。
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+server:
+  address: 127.0.0.1
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 40
+      min-spare: 5
+auth:
+  mode: wechat
+  wechat-app-id: ${WECHAT_APP_ID}
+  wechat-app-secret: ${WECHAT_APP_SECRET}
+jwt:
+  secret: ${JWT_SECRET}

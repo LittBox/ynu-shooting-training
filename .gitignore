@@ -1,0 +1,59 @@
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
+npm-debug.log*
+
+# Node
+node_modules/
+npm-debug.log
+.npm/
+.yarn/
+
+# 数据 & 备份（运行时生成，不入仓）
+server/data/
+server/backups/
+backend-spring/backups/
+server/data/*.db
+server/data/*.db-journal
+server/data/*.sqlite
+server/data/*.sqlite-journal
+*.bak
+
+# 测试产物
+coverage/
+.nyc_output/
+
+# 临时构建
+dist/
+build/
+unpackage/
+target/
+*.class
+*.jar
+
+# 本地数据库、运行配置与备份；SQL 建表和迁移脚本仍入仓
+backend-spring/data/
+*.mv.db
+*.trace.db
+*.dump
+*.sql.gz
+*.tar.gz
+backend.env
+project.private.config.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 本机工具缓存
+__pycache__/
+*.pyc
+
+# 环境变量
+.env
+.env.local
+.env.*.local

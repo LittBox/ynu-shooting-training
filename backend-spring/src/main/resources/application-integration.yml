@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ynu-integration;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password:
+    hikari:
+      # 测试仍用独立内存库，但与正式数据库使用相同的 schema 名。
+      connection-init-sql: CREATE SCHEMA IF NOT EXISTS "ynu-shooting"; SET SCHEMA 'ynu-shooting'
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+server:
+  address: 127.0.0.1
+  port: 18080
+auth:
+  mode: mock
+jwt:
+  secret: integration-only-secret-for-loopback-ephemeral-testing

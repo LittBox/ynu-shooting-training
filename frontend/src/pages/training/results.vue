@@ -1,11 +1,12 @@
 <template>
   <view class="page">
-    <NavBar :title="sessionId ? '训练成绩' : '我的成绩'" subtitle="EVERY ROUND COUNTS"><template #action><button class="text-button" @tap="back">返回 ↗</button></template></NavBar>
+    <NavBar :title="sessionId ? '训练成绩' : selectedDate ? '当日训练' : '我的成绩'" subtitle="EVERY ROUND COUNTS"><template #action><button class="text-button" @tap="back">返回 ↗</button></template></NavBar>
     <view class="page-content results-content">
       <view v-if="error" class="error-message"><text>{{ error }}</text><button class="text-button" :disabled="busy" @tap="load">重新加载 ↻</button></view>
       <view v-if="loading && !detail && !history" class="state-card">正在同步训练成绩…</view>
       <template v-if="detail">
-        <view class="session-card"><text class="eyebrow">{{ detail.session.endedAt ? 'SESSION COMPLETE' : 'TRAINING IN PROGRESS' }}</text><view class="page-heading">{{ detail.session.deviceName }}</view><text class="muted">{{ dateLabel(detail.session.startedAt) }} · 各轮可选择不同模式</text><view v-for="result in modeResults" :key="result.mode" class="best-line"><view><text>{{ modeLabel(result.mode) }}</text><text class="round-time">{{ detail.session.endedAt ? '本次最终成绩' : '本次当前最高' }}</text></view><text class="best-value">{{ score(detail.session.endedAt ? result.finalTotal : result.bestTotal) }}<text class="unit"> 环</text></text></view><text v-if="!modeResults.length" class="hint">尚未登记成绩，各模式分别记录最高分。</text></view>
+        <view class="session-card"><text class="eyebrow">{{ detail.session.endedAt ? 'SESSION COMPLETE' : 'TRAINING IN PROGRESS' }}</text><view class="page-heading">{{ detail.session.deviceName }}</view><text class="muted">{{ dateLabel(detail.session.startedAt) }}</text><text class="hint">训练时间 {{ sessionTimeRange(detail.session) }}</text><text class="hint">共登记 {{ detail.attempts.length }} 轮 · {{ detail.session.actualDurationMin != null ? `累计训练 ${detail.session.actualDurationMin} 分钟` : detail.session.endedAt ? '训练时长未记录' : '训练中' }}</text><view v-for="result in modeResults" :key="result.mode" class="best-line"><view><text>{{ modeLabel(result.mode) }}</text><text class="round-time">{{ detail.session.endedAt ? '本次最终成绩' : '本次当前最高' }}</text></view><text class="best-value">{{ score(detail.session.endedAt ? result.finalTotal : result.bestTotal) }}<text class="unit"> 环</text></text></view><text v-if="!modeResults.length" class="hint">尚未登记成绩，各模式分别记录最高分。</text></view>
+        <view class="entry-card"><view class="section-title">本次训练表现</view><view class="mode-options"><button v-for="choice in chartModes" :key="choice" class="mode-option" :class="{ selected: chartMode === choice }" @tap="chartMode = choice">{{ modeLabel(choice) }}</button></view><RoundTrend :attempts="chartAttempts" :mode="chartMode" /></view>
         <view v-if="detail.session.endedAt && !detail.session.historical" class="resume-card"><button class="resume-button" :disabled="!detail.canResume || busy || loading" :loading="resuming" @tap="confirmResume">继续本时段训练</button><text class="hint">{{ detail.canResume ? '误触结束可继续原训练，已登记成绩保留，不重复计算预约次数。' : detail.resumeUnavailableReason }}</text></view>
         <text v-if="detail.session.historical" class="hint">教员补录 · {{ detail.session.recordedByName }} · {{ dateLabel(detail.session.recordedAt) }}。如需更正，请联系教员。</text>
         <view v-if="!detail.session.historical" class="entry-card">
@@ -24,11 +25,22 @@
         <button class="text-button history-link" @tap="goHistory">查看个人历史成绩 ↗</button>
       </template>
       <template v-if="history && !sessionId">
-        <text class="eyebrow">YOUR PERSONAL BEST</text><view class="page-heading">个人历史最佳</view><text class="hint">不同器械、不同赛事分别记录；训练结束后自动同步。</text>
-        <view class="table best-table"><view class="table-row table-head"><text>项目</text><text>历史最高</text></view><view v-for="row in history.personalBests" :key="row.weapon + row.mode" class="table-row"><view><text>{{ weaponLabel(row.weapon) }}</text><text class="round-time">{{ modeLabel(row.mode) }}</text></view><text class="best-value">{{ score(row.totalScore) }}<text class="unit"> 环</text></text></view><view v-if="!history.personalBests.length" class="empty">完成训练并登记成绩后，将在这里记录个人最佳。</view></view>
-        <template v-if="history.unscoredSessions?.length"><view class="section-heading"><text class="section-title">待登记成绩的训练</text></view><view class="table"><button v-for="row in history.unscoredSessions" :key="row.id" class="table-row history-row" @tap="openSession(row.id)"><view class="history-copy"><text>{{ row.deviceName }}</text><text class="round-time">{{ dateLabel(row.startedAt) }}</text></view><text>{{ row.endedAt ? '补登 / 继续 ↗' : '登记成绩 ↗' }}</text></button></view></template>
-        <view class="section-heading"><text class="section-title">历史成绩表</text><text class="hint">{{ historyTrainingCount }} 次训练 · {{ history.sessions.length }} 项成绩</text></view>
-        <view class="table"><view class="table-row table-head"><text>日期 / 项目</text><text>本次最终成绩</text></view><button v-for="row in history.sessions" :key="`${row.sessionId}-${row.mode}`" class="table-row history-row" @tap="openSession(row.sessionId)"><view class="history-copy"><text>{{ dateLabel(row.recordedAt) }}</text><text class="round-time">{{ weaponLabel(row.weapon) }} · {{ modeLabel(row.mode) }}</text></view><view class="round-score"><text v-if="row.personalRecord" class="badge">创个人纪录</text><text>{{ score(row.totalScore) }} 环 ↗</text></view></button><view v-if="!history.sessions.length" class="empty">尚无已确定的训练成绩。</view></view>
+        <template v-if="!selectedDate">
+          <text class="eyebrow">ONE DAY AT A TIME</text><view class="page-heading">每天的训练，都有记录</view><text class="hint intro">选择日期，查看当天各次训练与成绩走势。按实际训练开始日归属，补登仍计入原训练日。</text>
+          <button v-for="day in historyDays" :key="day.date" class="day-card" @tap="openDay(day.date)">
+            <view class="date-tile"><text>{{ day.date.slice(8) }}</text><text>{{ day.date.slice(0, 7).replace('-', ' / ') }}</text></view>
+            <view class="day-copy"><text class="day-title">{{ weekday(day.date) }}</text><text class="hint">{{ day.sessions.length }} 次训练</text><text v-for="best in day.bests" :key="best.weapon + best.mode" class="small">{{ weaponLabel(best.weapon) }} · {{ modeLabel(best.mode) }}<text class="daily-best">当日最佳 {{ score(best.totalScore) }} 环</text></text><text v-if="!day.bests.length" class="small">{{ day.sessions.some(row => !row.endedAt) ? '含进行中的训练' : '待登记成绩' }}</text></view><text class="arrow">↗</text>
+          </button>
+          <view v-if="!historyDays.length" class="state-card">还没有训练记录</view>
+          <view class="section-heading"><text class="section-title">个人历史最佳</text></view><text class="hint">不同器械、赛制分别记录；训练结束后自动同步。</text>
+          <view class="table best-table"><view class="table-row table-head"><text>项目</text><text>历史最高</text></view><view v-for="row in history.personalBests" :key="row.weapon + row.mode" class="table-row"><view><text>{{ weaponLabel(row.weapon) }}</text><text class="round-time">{{ modeLabel(row.mode) }}</text></view><text class="best-value">{{ score(row.totalScore) }}<text class="unit"> 环</text></text></view><view v-if="!history.personalBests.length" class="empty">完成训练并登记成绩后，将在这里记录个人最佳。</view></view>
+        </template>
+        <template v-else>
+          <text class="eyebrow">YOUR DAILY TRAINING</text><view class="page-heading">{{ selectedDate.replaceAll('-', ' / ') }}</view><text class="hint intro">{{ weekday(selectedDate) }} · {{ selectedDay?.sessions.length || 0 }} 次训练 · 按开始时间排列</text>
+          <view v-if="selectedDay?.bests.length" class="session-card"><view class="section-title">当日最佳</view><view v-for="best in selectedDay.bests" :key="best.weapon + best.mode" class="daily-summary"><text>{{ weaponLabel(best.weapon) }} · {{ modeLabel(best.mode) }}</text><text>{{ score(best.totalScore) }} 环</text></view></view>
+          <button v-for="row in selectedDay?.sessions || []" :key="row.id" class="session-option" @tap="openSession(row.id)"><view class="session-option-heading"><text>{{ sessionTimeRange(row) }}</text><text class="small">{{ row.endedAt ? '已结束' : '训练中' }}</text></view><text class="hint">{{ row.deviceName }}</text><view v-for="result in row.results" :key="result.mode" class="daily-summary"><text>{{ modeLabel(result.mode) }}</text><text>{{ score(result.totalScore) }} 环</text></view><text v-if="!row.results.length" class="hint">{{ row.endedAt ? '尚无最终成绩，可进入详情补登' : '进入详情查看当前轮次' }}</text><text class="session-link">训练详情与折线图 ↗</text></button>
+          <view v-if="!selectedDay" class="state-card">当天暂无训练记录</view>
+        </template>
       </template>
     </view>
   </view>
@@ -37,8 +49,12 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar.vue'
+import RoundTrend from '@/components/RoundTrend.vue'
+import { personalHistoryDays, sessionTimeRange } from '@/domain/personal-history.js'
+import { weekday } from '@/domain/booking.js'
 import { trainingService } from '@/services/training.js'
 import { groupError, groupSpec, sumGroups, modeLabel, weaponLabel, finishMessage, resultModes, isAttemptBest, finishConfirmation } from '@/domain/training.js'
+const selectedDate = ref(''), chartMode = ref('final_')
 const sessionId = ref(null), detail = ref(null), history = ref(null), groups = ref(['', '', '']), mode = ref('final_'), error = ref(''), inputError = ref('')
 const loading = ref(false), saving = ref(false), finishing = ref(false), resuming = ref(false)
 const busy = computed(() => saving.value || finishing.value || resuming.value)
@@ -48,7 +64,10 @@ const spec = computed(() => groupSpec(mode.value)), roundTotal = computed(() => 
 function groupSummary(value) { try { return JSON.parse(value).map(n => `${n}环`).join(' + ') } catch { return '' } }
 const drafts = { final_: ['', '', ''], qualifying: ['', '', '', '', '', ''] }
 const modeResults = computed(() => resultModes(detail.value))
-const historyTrainingCount = computed(() => new Set(history.value?.sessions.map(row => row.sessionId) || []).size)
+const historyDays = computed(() => personalHistoryDays(history.value))
+const selectedDay = computed(() => historyDays.value.find(day => day.date === selectedDate.value))
+const chartAttempts = computed(() => (detail.value?.attempts || []).map(row => ({ ...row, mode: row.mode || detail.value.session.mode })))
+const chartModes = computed(() => [...new Set([...modeResults.value.map(row => row.mode), ...chartAttempts.value.map(row => row.mode)])])
 function isModeBest(attempt) { return isAttemptBest(attempt, detail.value) }
 function changeMode(value) {
   if (mode.value === value) return
@@ -57,19 +76,20 @@ function changeMode(value) {
 }
 const score = value => value == null ? '—' : Number(value).toFixed(1)
 const dateLabel = value => value ? value.slice(0, 16).replace('T', ' ') : ''
-function back() { getCurrentPages().length > 1 ? uni.navigateBack() : uni.switchTab({ url: '/pages/my/my' }) }
+function openDay(date) { selectedDate.value = date; uni.pageScrollTo({ scrollTop: 0, duration: 0 }) }
+function back() { if (!sessionId.value && selectedDate.value) { selectedDate.value = ''; uni.pageScrollTo({ scrollTop: 0, duration: 0 }); return } getCurrentPages().length > 1 ? uni.navigateBack() : uni.switchTab({ url: '/pages/my/my' }) }
 function goHistory() { uni.navigateTo({ url: '/pages/training/results' }) }
 function openSession(id) { uni.navigateTo({ url: `/pages/training/results?sessionId=${id}` }) }
 async function load() {
   const currentToken = uni.getStorageSync('token')
-  if (currentToken !== viewerToken) { detail.value = null; history.value = null; groups.value = spec.value.map(() => ''); drafts[mode.value] = [...groups.value]; requestKey = ''; submittedPayload = ''; viewerToken = currentToken; modeInitialized = false; drafts.final_ = ['', '', '']; drafts.qualifying = ['', '', '', '', '', ''] }
+  if (currentToken !== viewerToken) { detail.value = null; history.value = null; selectedDate.value = ''; groups.value = spec.value.map(() => ''); drafts[mode.value] = [...groups.value]; requestKey = ''; submittedPayload = ''; viewerToken = currentToken; modeInitialized = false; drafts.final_ = ['', '', '']; drafts.qualifying = ['', '', '', '', '', ''] }
   if (!currentToken) { error.value = '请先登录后查看本人成绩'; return }
   const id = ++generation, token = uni.getStorageSync('token')
   loading.value = true; error.value = ''
   try {
     const data = sessionId.value ? await trainingService.results(sessionId.value) : await trainingService.history()
     if (id !== generation || token !== uni.getStorageSync('token')) return
-    if (sessionId.value) { detail.value = data; if (!modeInitialized) { changeMode(data.session.mode); modeInitialized = true } } else history.value = data
+    if (sessionId.value) { detail.value = data; if (!modeInitialized) { changeMode(data.session.mode); modeInitialized = true } if (!chartModes.value.includes(chartMode.value)) chartMode.value = chartModes.value[0] || data.session.mode } else { if (!Array.isArray(data.trainingSessions)) throw new Error('服务端尚未更新按日训练记录，请更新后重试'); history.value = data }
   } catch (err) { if (id === generation) { error.value = err.message; detail.value = null; history.value = null } }
   finally { if (id === generation) loading.value = false }
 }
@@ -115,6 +135,24 @@ onShow(load)
 onHide(() => { generation++; loading.value = false })
 </script>
 <style scoped>
+.intro { margin-bottom: 30rpx; }
+.day-card { display: flex; align-items: center; width: 100%; gap: 20rpx; padding: 28rpx 22rpx; margin-bottom: 20rpx; border: 1rpx solid var(--color-border); background: #fff; border-radius: 16rpx; text-align: left; line-height: 1.5; color: var(--color-text); }
+.day-card::after, .session-option::after { border: 0; }
+.date-tile { width: 120rpx; flex-shrink: 0; text-align: center; border-right: 1rpx solid var(--color-border); padding-right: 18rpx; }
+.date-tile > text { display: block; }
+.date-tile > text:first-child { font-size: 54rpx; line-height: 1.1; font-weight: 500; }
+.date-tile > text:last-child { font-size: 18rpx; color: var(--color-text-soft); margin-top: 10rpx; }
+.day-copy { flex: 1; min-width: 0; }
+.day-title { font-size: 29rpx; }
+.small { display: block; font-size: 21rpx; line-height: 1.6; color: var(--color-text-soft); margin-top: 8rpx; }
+.daily-best { display: block; color: var(--color-text); }
+.arrow { color: var(--color-primary); font-size: 30rpx; }
+.daily-summary, .session-option-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12rpx; margin-top: 16rpx; font-size: 24rpx; }
+.session-option { width: 100%; background: #fff; border: 1rpx solid var(--color-border); padding: 24rpx; margin: 0 0 22rpx; border-radius: 14rpx; text-align: left; color: var(--color-text); line-height: 1.7; }
+.session-option-heading { margin: 0; font-size: 30rpx; }
+.session-option-heading .small { margin: 0; }
+.session-link { display: block; margin-top: 20rpx; color: var(--color-primary); font-size: 23rpx; }
+
 .resume-card { margin-bottom: 28rpx; }
 .resume-button { background: var(--color-primary-soft); color: var(--color-primary); font-size: 28rpx; }
 .results-content { padding-top: 36rpx; }

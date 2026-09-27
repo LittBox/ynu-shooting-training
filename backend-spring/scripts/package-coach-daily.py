@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the coach daily results bundle from the verified local JAR."""
+"""Build the personal daily history release from the verified local JAR."""
 import hashlib
 import json
 import subprocess
@@ -11,7 +11,7 @@ import tempfile
 
 backend = Path(__file__).resolve().parents[1]
 root = backend.parent
-name = 'ynu-coach-history-20260927'
+name = 'ynu-personal-history-20260927'
 package = root / 'dist' / f'{name}.tar.gz'
 package.parent.mkdir(parents=True, exist_ok=True)
 sources = {
@@ -19,7 +19,8 @@ sources = {
     'upgrade-coach-daily.sh': backend / 'deploy/upgrade-coach-daily.sh',
     'migrate-wechat-reminders.sql': backend / 'scripts/migrate-wechat-reminders.sql',
     'migrate-historical-training.sql': backend / 'scripts/migrate-historical-training.sql',
-    'README.md': root / 'docs/教员历史训练补录.md',
+    'README.md': root / 'docs/学员按日历史成绩-服务器补丁.md',
+    'FEATURES.md': root / 'docs/学员按日历史成绩.md',
 }
 with tempfile.TemporaryDirectory(prefix='ynu-coach-daily-package-') as tmp:
     stage = Path(tmp) / name
@@ -35,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='ynu-coach-daily-package-') as tmp:
         'jar_sha256': hashlib.sha256((stage / 'backend.jar').read_bytes()).hexdigest(),
         'java_required': 21,
         'migrations': ['migrate-wechat-reminders.sql', 'migrate-historical-training.sql'],
-        'note': 'Local package only; server deployment and WeChat upload are separate steps.',
+        'note': 'Adds personal trainingSessions metadata; includes idempotent prior migrations for servers that have not installed historical entry. WeChat upload is separate.',
     }
     (stage / 'BUILD-INFO.json').write_text(json.dumps(build_info, ensure_ascii=False, indent=2) + '\n')
     sums = ''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(stage.iterdir()))

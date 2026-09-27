@@ -93,6 +93,28 @@ class TrainingResultsIntegrationTest {
     }
     ResultActions finishResponse(String token,long id)throws Exception {return mvc.perform(post("/api/training/finish/"+id).header("Authorization",token));}
     JsonNode history(String token)throws Exception {return data(mvc.perform(get("/api/training/records/me").header("Authorization",token)).andExpect(status().isOk()));}
+    @Test void personalHistoryIncludesOwnScoredAndUnscoredTrainingTimesWithoutMixedModeDuplicates()throws Exception {
+        long id=session(ts,pistol,"S1");
+        long otherId=session(to,rifle,"S1");
+        var active=history(ts);
+        assertEquals(1,active.path("trainingSessions").size());
+        assertEquals(id,active.at("/trainingSessions/0/id").asLong());
+        assertTrue(active.at("/trainingSessions/0/endedAt").isNull());
+        assertEquals(1,active.path("unscoredSessions").size());
+        attempt(ts,id,"daily-f","final_",List.of(90.0,90.0,35.0)).andExpect(status().isOk());
+        attempt(ts,id,"daily-q","qualifying",List.of(90.0,90.0,90.0,90.0,90.0,90.0)).andExpect(status().isOk());
+        finish(ts,id);
+        clock.set("2026-09-27T09:00:00+08:00");
+        attempt(ts,id,"late-daily-f","final_",List.of(95.0,95.0,38.0)).andExpect(status().isOk());
+        var completed=history(ts);
+        assertEquals(2,completed.path("sessions").size());
+        assertEquals(1,completed.path("trainingSessions").size());
+        assertEquals(0,completed.path("unscoredSessions").size());
+        assertTrue(completed.at("/trainingSessions/0/startedAt").asText().startsWith(date));
+        assertFalse(completed.at("/trainingSessions/0/endedAt").isNull());
+        assertEquals(otherId,history(to).at("/trainingSessions/0/id").asLong());
+        mvc.perform(get("/api/training/"+id+"/results").header("Authorization",to)).andExpect(status().isForbidden());
+    }
     @Test void finalRoundsAreSummedAndOnlyHighestIsPublishedAtFinish()throws Exception {
         long id=session(ts,pistol,"S1");
         attempt(ts,id,"a","final_",List.of(90.0,91.0,35.0)).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalScore").value(216.0));

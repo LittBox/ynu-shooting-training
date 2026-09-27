@@ -99,6 +99,10 @@ class CoachHistoricalIntegrationTest {
         var today=data(mvc.perform(get("/api/coach/training/days/2026-09-26").header("Authorization",tc)));assertEquals(0,today.path("sessionCount").asInt());
         var history=data(mvc.perform(get("/api/training/records/me").header("Authorization",ta)));assertEquals(2,history.path("sessions").size());
         assertEquals(0,history.path("unscoredSessions").size());
+        assertEquals(1,history.path("trainingSessions").size());
+        assertEquals(id,history.at("/trainingSessions/0/id").asLong());
+        assertTrue(history.at("/trainingSessions/0/startedAt").asText().startsWith("2026-09-25"));
+        assertTrue(history.at("/trainingSessions/0/endedAt").asText().startsWith("2026-09-26"));
         var rank=data(mvc.perform(get("/api/leaderboard").param("weapon","PISTOL").param("event","FINAL")));assertTrue(rank.toString().contains("225"));
         mvc.perform(get("/api/training/"+id+"/results").header("Authorization",ta)).andExpect(status().isOk());
         String other="Bearer "+tokens.generateToken(b);

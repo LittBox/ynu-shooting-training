@@ -4,21 +4,21 @@
     <view v-for="row in rows" :key="row.id" class="row" :class="{ 'period-break': row.id === 'S3' || row.id === 'S5' }">
       <view class="time"><text class="period">{{ row.period }} <text class="slot-id">{{ row.id }}</text></text><text class="start">{{ row.start }}</text><text class="end">{{ row.end }}</text></view>
       <view v-for="cell in row.cells" :key="cell.date" class="cell" :class="{ 'cell-selected': cell.date === selectedDate }">
-        <button class="slot-card" :class="`slot-card--${cell.state}`" :aria-label="`${shortDate(cell.date)} ${row.start} 至 ${row.end}，${cell.label}`" @tap="$emit('inspect', cell)">
-          <view class="slot-top"><view class="mark"/><text>{{ cell.state === 'mine' ? '已预约' : cell.state === 'available' ? '可预约' : cell.state === 'full' ? '已约满' : cell.state === 'past' ? '已结束' : cell.state === 'ongoing' ? (cell.walkInCount && !cell.mine ? '可立即训练' : '进行中') : '未开放' }}</text></view>
-          <text class="count">{{ cell.mine ? (cell.mine.deviceType === 'rifle' ? '气步枪' : '气手枪') : cell.state === 'available' ? `${cell.remaining} 台设备` : cell.state === 'ongoing' && cell.walkInCount ? `${cell.walkInCount} 台空闲` : '—' }}</text>
-          <text class="action">{{ cell.state === 'ongoing' && cell.walkInCount && !cell.mine ? '选择设备 ↗' : '查看设备 / 学员 ↗' }}</text>
+        <button class="slot-card" :class="[`slot-card--${cell.state}`, { 'slot-card--focused': cell.focused }]" :aria-label="`${shortDate(cell.date)} ${row.start} 至 ${row.end}，${cell.label}`" @tap="$emit('inspect', cell)">
+          <view class="slot-top"><view class="mark"/><text>{{ cell.title || (cell.state === 'mine' ? '已预约' : cell.state === 'available' ? '可预约' : cell.state === 'full' ? '已约满' : cell.state === 'past' ? '已结束' : cell.state === 'ongoing' ? (cell.walkInCount && !cell.mine ? '可立即训练' : '进行中') : '未开放') }}</text></view>
+          <text class="count">{{ cell.subtitle || (cell.mine ? (cell.mine.deviceType === 'rifle' ? '气步枪' : '气手枪') : cell.state === 'available' ? `${cell.remaining} 台设备` : cell.state === 'ongoing' && cell.walkInCount ? `${cell.walkInCount} 台空闲` : '—') }}</text>
+          <text class="action">{{ cell.action || (cell.state === 'ongoing' && cell.walkInCount && !cell.mine ? '选择设备 ↗' : '查看设备 / 学员 ↗') }}</text>
         </button>
       </view>
       <view v-if="timeMarker && timeMarker.slotId === row.id" class="time-marker" :style="{ top: `${timeMarker.progress * 100}%` }" aria-hidden="true"><view class="time-marker__dot" /></view>
     </view>
-    <view class="foot"><text>所有时间均为北京时间</text><text>点击时段查看设备与学员 ↗</text></view>
+    <view class="foot"><text>所有时间均为北京时间</text><text>{{ hint }}</text></view>
   </view>
 </template>
 <script setup>
 import { computed } from 'vue'
 import { shortDate, calendarTimeMarker } from '../../domain/booking.js'
-const props = defineProps({ dates: { type: Array, required: true }, rows: { type: Array, required: true }, selectedDate: String, now: { type: Number, required: true } })
+const props = defineProps({ dates: { type: Array, required: true }, rows: { type: Array, required: true }, selectedDate: String, hint: { type: String, default: '点击时段查看设备与学员 ↗' }, now: { type: Number, required: true } })
 const timeMarker = computed(() => calendarTimeMarker(props.dates, props.rows, props.now))
 defineEmits(['inspect', 'select-date'])
 </script>
@@ -44,9 +44,10 @@ button::after { border: 0; }
 .mark { width: 7rpx; height: 7rpx; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .count { font-size: 26rpx; font-weight: 650; margin-top: 5rpx; white-space: nowrap; }
 .action { font-size: 18rpx; margin-top: 7rpx; white-space: nowrap; }
+.slot-card--focused { box-shadow: inset 0 0 0 2rpx var(--color-text); }
 .slot-card--available { border-left-color: var(--color-primary); }
 .slot-card--available:active { background: #e1e5ee; }
-.slot-card--mine { background: var(--color-primary); color: #fff; border-left-color: var(--color-text); }
+.slot-card--mine { background: #f2baae; color: var(--color-text); border-left-color: #d99586; }
 .slot-card--full, .slot-card--closed { background: #fafbfc; color: var(--color-primary); border: 1rpx dashed var(--color-border); }
 .slot-card--past { background: transparent; border-left-color: transparent; color: var(--color-primary); opacity: .75; }
 .slot-card--ongoing .slot-top { color: #4f856c; font-weight: 600; }

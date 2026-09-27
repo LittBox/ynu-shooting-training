@@ -3,11 +3,11 @@
     <NavBar title="训练预约" subtitle="云大射击训练中心" />
     <view class="booking-content">
       <view class="hero">
-        <view class="hero__copy"><text class="eyebrow">MAKE TIME. TAKE AIM.</text><view class="hero__title">把时间，留给专注。</view><text class="hero__subtitle">提前预约，或选择当前空闲设备立即训练。</text></view>
+        <view class="hero__copy"><text class="eyebrow">MAKE TIME. TAKE AIM.</text><view class="hero__title">把时间，留给专注。</view><text class="hero__subtitle">{{ tab === 'duty' ? '安排本人值班，查看日程并确认到岗、离场。' : '提前预约，或选择当前空闲设备立即训练。' }}</text></view>
         <view class="target-art" aria-hidden="true"><view class="target-art__ring"><view class="target-art__inner"><view class="target-art__center" /></view></view><view class="target-art__cross target-art__cross--x"/><view class="target-art__cross target-art__cross--y"/></view>
       </view>
-      <view class="view-tabs"><button :class="{ 'is-active': tab === 'schedule' }" @tap="tab = 'schedule'">预约日程<text class="tab-dot" v-if="tab === 'schedule'" /></button><button :class="{ 'is-active': tab === 'mine' }" @tap="tab = 'mine'">我的预约<text v-if="activeCount" class="tab-count">{{ activeCount }}</text></button><button :class="{ 'is-active': tab === 'history' }" @tap="tab = 'history'">过往训练</button></view>
-      <button class="text-button booking-rules" @tap="showRules">预约须知 ↗</button>
+      <view class="view-tabs"><button :class="{ 'is-active': tab === 'schedule' }" @tap="tab = 'schedule'">预约日程<text class="tab-dot" v-if="tab === 'schedule'" /></button><button v-if="coachAccess" :class="{ 'is-active': tab === 'duty' }" @tap="tab = 'duty'">教员值班</button><button :class="{ 'is-active': tab === 'mine' }" @tap="tab = 'mine'">我的预约<text v-if="activeCount" class="tab-count">{{ activeCount }}</text></button><button :class="{ 'is-active': tab === 'history' }" @tap="tab = 'history'">过往训练</button></view>
+      <button v-if="tab !== 'duty'" class="text-button booking-rules" @tap="showRules">预约须知 ↗</button>
       <template v-if="tab === 'schedule'">
         <view class="date-panel">
           <view class="date-panel__header"><view class="month-title"><text class="month-title__number">{{ monthLabel }}</text><text class="month-title__year">{{ selectedDate.slice(0, 4) }}</text></view><button class="today-button" @tap="chooseDate(today)">回到今天 ↗</button></view>
@@ -19,6 +19,10 @@
         <view v-else-if="error" class="state-card"><text class="state-card__symbol">↻</text><text class="state-card__title">暂时没能加载日程</text><text class="state-card__hint">{{ error }}</text><button class="secondary-button" @tap="refresh()">重新加载</button></view>
         <BookingCalendar v-else :dates="visibleDates" :rows="rows" :now="now" :selected-date="selectedDate" @inspect="inspectCell" @select-date="chooseDate" />
         <view class="booking-note"><view class="booking-note__icon">i</view><view><text class="booking-note__title">有计划的训练，让进步发生。</text><text class="booking-note__text">最多提前 7 天预约 · 每天 3 场 · 每自然周 10 场</text><text class="booking-note__text">{{ updatedAt && !error ? `${updatedAt} 更新 · 页面每 30 秒自动刷新` : '设备余量以提交时的最新结果为准' }}</text></view></view>
+      </template>
+      <template v-else-if="tab === 'duty'">
+        <VenueDutyPanel v-if="coachAccess" ref="dutyPanel" :key="account.id" :user="account" :active="pageActive" :initial-date="dutyDate" @date-change="dutyDate = $event" @unauthorized="clearCoach" />
+        <view v-else class="state-card">正在确认教员身份…</view>
       </template>
       <template v-else>
         <view v-if="!loggedIn" class="state-card"><text class="state-card__symbol">⌑</text><text class="state-card__title">你的训练计划，在这里</text><text class="state-card__hint">登录后查看预约、签到和过往训练记录。</text><button class="primary-button" @tap="goLogin">登录并查看</button></view>
@@ -37,6 +41,9 @@
 import { ref, computed, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload, onPullDownRefresh } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar.vue'
+import VenueDutyPanel from '@/components/admin/VenueDutyPanel.vue'
+import { request } from '@/services/request.js'
+import { isCoach, validDutyDate } from '@/domain/duty.js'
 import ReminderButton from '@/components/ReminderButton.vue'
 import BookingDateStrip from '@/components/booking/BookingDateStrip.vue'
 import BookingCalendar from '@/components/booking/BookingCalendar.vue'
@@ -50,8 +57,10 @@ import { bookingService } from '@/services/booking.js'
 const { now, today, dates, selectedDate, offset, deviceType, visibleDates, bookings, loading, error, mineError, loggedIn, submitting, selection, successBooking, updatedAt, rows, selectedDevices, refresh, chooseDate, movePage, openCell, submit, start, stop } = useBooking()
 const { inspected, detail: slotDetail, loading: detailLoading, error: detailError, open: openDetails, close: closeDetails, refresh: refreshDetails } = useSlotDetails()
 const deviceTypes = DEVICE_TYPES
-const tab = ref('schedule'), pageActive = ref(false)
-onLoad(options => { if (['mine','history'].includes(options?.view)) tab.value = options.view })
+const tab = ref('schedule'), pageActive = ref(false), account = ref(null), dutyDate = ref(''), dutyPanel = ref(null)
+const coachAccess = computed(() => isCoach(account.value))
+let accountGeneration = 0
+onLoad(options => { if (['mine', 'history', 'duty'].includes(options?.view)) tab.value = options.view; if (validDutyDate(options?.dutyDate)) dutyDate.value = options.dutyDate })
 const displayBookings = computed(() => bookingRecordsForView(bookings.value, tab.value))
 const actionBusy = ref(false)
 const monthLabel = computed(() => `${Number(selectedDate.value.slice(5, 7))}月`)
@@ -60,17 +69,21 @@ onShow(() => {
   pageActive.value = true
   const incomingView = uni.getStorageSync('booking-view')
   if (incomingView) {
-    tab.value = ['mine', 'history'].includes(incomingView) ? incomingView : 'schedule'
+    tab.value = ['mine', 'history', 'duty'].includes(incomingView) ? incomingView : 'schedule'
     const incomingType = uni.getStorageSync('booking-device-filter')
     if (['', 'pistol', 'rifle'].includes(incomingType)) deviceType.value = incomingType
   }
+  const incomingDutyDate = uni.getStorageSync('booking-duty-date')
+  if (validDutyDate(incomingDutyDate)) dutyDate.value = incomingDutyDate
+  uni.removeStorageSync('booking-duty-date')
   uni.removeStorageSync('booking-view')
   uni.removeStorageSync('booking-device-filter')
-  start()
+  loadAccount()
+  if (tab.value !== 'duty') start()
   syncNativeTabBar(!!selection.value || !!successBooking.value || !!inspected.value)
 })
-onHide(() => { pageActive.value = false; stop(); closeDetails(); syncNativeTabBar(false) })
-onUnload(() => { pageActive.value = false; stop(); closeDetails(); syncNativeTabBar(false) })
+onHide(() => { pageActive.value = false; accountGeneration++; stop(); closeDetails(); syncNativeTabBar(false) })
+onUnload(() => { pageActive.value = false; accountGeneration++; stop(); closeDetails(); syncNativeTabBar(false) })
 watch(() => !!selection.value || !!successBooking.value || !!inspected.value, syncNativeTabBar)
 function syncNativeTabBar(hidden) {
   // Native WeChat TabBar is above the page's stacking context.
@@ -79,7 +92,21 @@ function syncNativeTabBar(hidden) {
   else uni.showTabBar({ animation: false })
   // #endif
 }
-onPullDownRefresh(async () => { try { await refresh() } finally { uni.stopPullDownRefresh() } })
+async function loadAccount() {
+  const id = ++accountGeneration, token = uni.getStorageSync('token')
+  account.value = null
+  if (!token) { clearCoach(); return }
+  try {
+    const user = await request('/api/auth/me')
+    if (id !== accountGeneration) return
+    if (token !== uni.getStorageSync('token')) { clearCoach(); return }
+    account.value = user
+    if (!isCoach(user) && tab.value === 'duty') tab.value = 'schedule'
+  } catch (err) { if (id === accountGeneration) clearCoach() }
+}
+function clearCoach() { account.value = null; if (tab.value === 'duty') tab.value = 'schedule' }
+watch(tab, next => { closeDetails(); selection.value = null; if (pageActive.value) { if (next === 'duty') stop(); else start() } })
+onPullDownRefresh(async () => { try { if (tab.value === 'duty') await dutyPanel.value?.refresh(); else await Promise.all([refresh(), loadAccount()]) } finally { uni.stopPullDownRefresh() } })
 function inspectCell(cell) { chooseDate(cell.date); openDetails(cell, deviceType.value) }
 function manageFromDetails() { closeDetails(); tab.value = 'mine' }
 function walkInDevice(device) { return bookDevice(device, true) }
@@ -139,11 +166,11 @@ button::after { border: 0; }
 .target-art__cross--x { left: -12rpx; right: -12rpx; height: 1rpx; }
 .target-art__cross--y { top: -12rpx; bottom: -12rpx; width: 1rpx; }
 .booking-rules { margin: -12rpx 0 20rpx auto; }
-.view-tabs { display: flex; align-items: center; border-bottom: 1rpx solid #d9dee7; margin-bottom: 28rpx; gap: 28rpx; }
-.view-tabs button { background: transparent; color: var(--color-primary); border-radius: 0; font-size: 28rpx; padding: 0 0 22rpx; min-height: 64rpx; display: flex; align-items: center; gap: 10rpx; }
+.view-tabs { display: flex; align-items: center; border-bottom: 1rpx solid #d9dee7; margin-bottom: 28rpx; gap: 16rpx; }
+.view-tabs button { background: transparent; color: var(--color-primary); border-radius: 0; font-size: 26rpx; flex: 1; justify-content: center; white-space: nowrap; padding: 0 0 22rpx; min-height: 64rpx; display: flex; align-items: center; gap: 6rpx; }
 .view-tabs .is-active { font-weight: 650; color: var(--color-text); box-shadow: 0 3rpx 0 var(--color-text); }
 .tab-dot { width: 8rpx; height: 8rpx; background: var(--color-primary); border-radius: 50%; }
-.tab-count { font-size: 19rpx; background: #dce1ea; padding: 0 10rpx; border-radius: 999rpx; }
+.tab-count { font-size: 19rpx; background: #dce1ea; padding: 0 6rpx; border-radius: 999rpx; }
 .view-tabs .rules-link { margin-left: auto; font-size: 21rpx; }
 .date-panel { padding: 24rpx 18rpx 12rpx; background: #fff; border: 1rpx solid #e1e4eb; border-radius: 22rpx; box-shadow: 0 5rpx 18rpx rgba(61,74,93,.025); }
 .date-panel__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; padding: 0 8rpx; }
@@ -162,7 +189,7 @@ button::after { border: 0; }
 .legend { display: flex; gap: 20rpx; color: var(--color-primary); font-size: 19rpx; }
 .legend__item { display: flex; align-items: center; gap: 8rpx; }
 .legend__mark { height: 13rpx; width: 13rpx; border: 1rpx solid var(--color-primary); background: #e1e5ee; border-radius: 3rpx; }
-.legend__mark--mine { background: var(--color-primary); }
+.legend__mark--mine { background: #f2baae; border-color: #d99586; }
 .legend__mark--full { background: transparent; border: 1rpx dashed var(--color-primary); }
 .refresh-link { background: transparent; color: var(--color-primary); font-size: 21rpx; padding: 10rpx 0 10rpx 20rpx; }
 .booking-note { display: flex; gap: 18rpx; margin: 26rpx 6rpx 0; }

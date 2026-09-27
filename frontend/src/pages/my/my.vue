@@ -6,7 +6,6 @@
       <button v-if="!logged" class="primary-button" @tap="login">登录 / 完成身份登记 ↗</button>
       <view v-else class="identity"><text>{{ user?.profileStatus === 'completed' ? '✓ 已完成身份登记' : user ? '○ 请完善资料（含性别）' : '○ 正在确认身份信息' }}</text><button v-if="user" class="text-button" @tap="editProfile">{{ user.profileStatus === 'completed' ? '资料与身份 ↗' : '去完善 ↗' }}</button></view>
       <view v-if="user" class="role-card"><view class="role-line"><text class="role-label">{{ roleLabel }}</text><button class="text-button" :disabled="loading" @tap="load">刷新身份 ↻</button></view><text class="account-id">账号 ID：{{ user.id }}</text><text class="role-hint">{{ isCoach ? '可安排本人值班、确认到岗；同时保留预约与训练功能。' : '担任教练员？在“资料与身份”中选择教练员，填写负责人发放的邀请码即可开通。' }}</text></view>
-      <VenueDutyPanel v-if="isCoach" :key="user.id" :user="user" :active="pageActive" :initial-date="reminderDutyDate" />
       <view class="stats"><view><text>{{ metric('completed') }}</text><text>已完成训练</text></view><view><text>{{ metric('upcoming') }}</text><text>待进行预约</text></view><view><text>{{ metric('all') }}</text><text>累计预约</text></view></view>
       <view v-if="error" class="inline-error"><text>{{ error }}</text><button class="text-button" @tap="load">重新加载</button></view>
       <view class="section-heading"><text class="section-title">下一次训练</text><button v-if="logged" class="text-button" @tap="goBookings">全部预约 ↗</button></view>
@@ -14,7 +13,7 @@
       <view v-else-if="upcoming" class="next-session"><view class="flex-between"><text class="eyebrow">NEXT SESSION</text><text class="status">{{ statusLabels[upcoming.status] }}</text></view><view class="session-date">{{ shortDate(upcoming.slotDate) }} · {{ weekday(upcoming.slotDate) }}</view><view class="session-time">{{ upcoming.slotStart }} — {{ upcoming.slotEnd }}</view><view class="flex-between"><text class="muted">{{ upcoming.deviceName }}</text><button class="text-button" @tap="goBookings">查看详情 ↗</button></view></view>
       <view v-else class="empty-session"><view class="target-mark"/><text class="state-title">{{ error && logged ? '暂时无法查看训练安排' : '留一点时间，给热爱的事' }}</text><text class="muted">{{ error && logged ? '请重新加载，获取最新预约记录。' : logged ? '还没有待进行的训练，选个时间出发吧。' : '登录后，在这里查看你的训练安排。' }}</text><button class="text-button" @tap="logged ? goBooking() : login()">{{ logged ? '预约下一次训练 ↗' : '登录并查看 ↗' }}</button></view>
       <view class="section-heading"><text class="section-title">训练服务</text><text class="eyebrow">FOR YOU</text></view>
-      <view class="menu"><button v-if="isCoach" @tap="goCoachResults"><text class="menu-number">教</text><text>学员成绩管理</text><text class="arrow">↗</text></button><button @tap="goResults"><text class="menu-number">☆</text><text>我的成绩与历史最佳</text><text class="arrow">↗</text></button><button @tap="goBookings"><text class="menu-number">01</text><text>我的预约与签到</text><text class="arrow">↗</text></button><button @tap="goRankings"><text class="menu-number">02</text><text>查看训练排行榜</text><text class="arrow">↗</text></button><button @tap="showRules"><text class="menu-number">03</text><text>预约与场馆须知</text><text class="arrow">＋</text></button><button @tap="showPrivacy"><text class="menu-number">04</text><text>个人信息说明</text><text class="arrow">＋</text></button></view>
+      <view class="menu"><button v-if="isCoach" @tap="goDuty"><text class="menu-number">班</text><text>我的值班安排</text><text class="arrow">↗</text></button><button v-if="isCoach" @tap="goCoachResults"><text class="menu-number">教</text><text>学员成绩管理</text><text class="arrow">↗</text></button><button @tap="goResults"><text class="menu-number">☆</text><text>我的成绩与历史最佳</text><text class="arrow">↗</text></button><button @tap="goBookings"><text class="menu-number">01</text><text>我的预约与签到</text><text class="arrow">↗</text></button><button @tap="goRankings"><text class="menu-number">02</text><text>查看训练排行榜</text><text class="arrow">↗</text></button><button @tap="showRules"><text class="menu-number">03</text><text>预约与场馆须知</text><text class="arrow">＋</text></button><button @tap="showPrivacy"><text class="menu-number">04</text><text>个人信息说明</text><text class="arrow">＋</text></button></view>
       <button v-if="logged" class="logout" @tap="logout">退出登录</button>
       <view class="signature"><text>专注当下，稳步向前。</text><text>YUNNAN UNIVERSITY · SHOOTING</text></view>
     </view>
@@ -24,7 +23,6 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar.vue'
-import VenueDutyPanel from '@/components/admin/VenueDutyPanel.vue'
 import { request } from '@/services/request.js'
 import { bookingService } from '@/services/booking.js'
 import { ACTIVE_STATUSES, STATUS_LABELS, shortDate, weekday } from '@/domain/booking.js'
@@ -52,11 +50,13 @@ async function load() {
   else error.value = records.reason.message
   logged.value = !!uni.getStorageSync('token'); if (!logged.value) { user.value = null; bookings.value = []; recordsLoaded.value = false }
   loading.value = false
+  if (isCoach.value && reminderDutyDate.value) { const date = reminderDutyDate.value; reminderDutyDate.value = ''; goDuty(date) }
 }
 function login() { uni.navigateTo({ url: '/pages/login/login' }) }
 function editProfile() { uni.navigateTo({ url: '/pages/login/login?edit=1' }) }
 function goBookings() { if (!logged.value) return login(); uni.setStorageSync('booking-view', 'mine'); uni.switchTab({ url: '/pages/booking/booking' }) }
 function goBooking() { uni.setStorageSync('booking-view', 'browse'); uni.switchTab({ url: '/pages/booking/booking' }) }
+function goDuty(date = '') { uni.setStorageSync('booking-view', 'duty'); if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) uni.setStorageSync('booking-duty-date', date); uni.switchTab({ url: '/pages/booking/booking' }) }
 function goCoachResults() { uni.navigateTo({ url: '/pages/training/coach' }) }
 function goResults() { if (!logged.value) return login(); uni.navigateTo({ url: '/pages/training/results' }) }
 function goRankings() { uni.switchTab({ url: '/pages/leaderboard/leaderboard' }) }

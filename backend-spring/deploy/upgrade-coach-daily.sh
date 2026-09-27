@@ -62,7 +62,7 @@ for attempt in $(seq 1 30); do
             "http://127.0.0.1:8080/api/bookings/slots?date=$query_date" 2>/dev/null |
             grep -q '"code":0'; then
         echo 'Upgrade successful: backend API returned code 0.'
-        echo 'Next: update the mini program and verify coach historical entry, daily best scores and student history. Reminder configuration is unchanged.'
+        echo 'Next: upload the new mini program; verify personal date cards, daily sessions, round charts and coach duty calendar. Reminder configuration is unchanged.'
         exit 0
     fi
     sleep 2

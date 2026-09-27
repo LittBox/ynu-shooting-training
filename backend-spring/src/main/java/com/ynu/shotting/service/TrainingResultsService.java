@@ -29,7 +29,7 @@ public class TrainingResultsService {
     public record ModeResult(String mode,Double bestTotal,Double finalTotal) {}
     public record Results(TrainingVO session,List<AttemptView> attempts,List<ModeResult> modeResults,Double bestTotal,Double finalTotal,boolean canResume,String resumeUnavailableReason) {}
     public record HistoryRow(Long sessionId,String weapon,String mode,double totalScore,LocalDateTime recordedAt,boolean personalRecord) {}
-    public record History(List<HistoryRow> personalBests,List<HistoryRow> sessions,List<TrainingVO> unscoredSessions) {}
+    public record History(List<HistoryRow> personalBests,List<HistoryRow> sessions,List<TrainingVO> unscoredSessions,List<TrainingVO> trainingSessions) {}
     record Value(double total,String totals,String groups) {}
 
     private void requireOwner(User user,TrainingSession session) {
@@ -121,9 +121,11 @@ public class TrainingResultsService {
         }
         Collections.reverse(rows);
         Set<Long> scoredIds=new HashSet<>();for(HistoryRow row:rows)scoredIds.add(row.sessionId());
-        var unscored=sessions.findByUserId(userId).stream().filter(s->s.hasResultsAccess()&&!scoredIds.contains(s.getId()))
-                .sorted(Comparator.comparing(TrainingSession::getStartedAt).reversed()).map(TrainingVO::from).toList();
-        return new History(List.copyOf(best.values()),rows,unscored);
+        var training=sessions.findByUserId(userId).stream().filter(TrainingSession::hasResultsAccess)
+                .sorted(Comparator.comparing(TrainingSession::getStartedAt).reversed().thenComparing(TrainingSession::getId))
+                .map(TrainingVO::from).toList();
+        var unscored=training.stream().filter(s->!scoredIds.contains(s.id())).toList();
+        return new History(List.copyOf(best.values()),rows,unscored,training);
     }
     public boolean isPersonalBest(Score score) {
         if(score==null)return false;

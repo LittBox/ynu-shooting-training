@@ -6,8 +6,9 @@
       <view v-if="loading && !detail && !history" class="state-card">正在同步训练成绩…</view>
       <template v-if="detail">
         <view class="session-card"><text class="eyebrow">{{ detail.session.endedAt ? 'SESSION COMPLETE' : 'TRAINING IN PROGRESS' }}</text><view class="page-heading">{{ detail.session.deviceName }}</view><text class="muted">{{ dateLabel(detail.session.startedAt) }} · 各轮可选择不同模式</text><view v-for="result in modeResults" :key="result.mode" class="best-line"><view><text>{{ modeLabel(result.mode) }}</text><text class="round-time">{{ detail.session.endedAt ? '本次最终成绩' : '本次当前最高' }}</text></view><text class="best-value">{{ score(detail.session.endedAt ? result.finalTotal : result.bestTotal) }}<text class="unit"> 环</text></text></view><text v-if="!modeResults.length" class="hint">尚未登记成绩，各模式分别记录最高分。</text></view>
-        <view v-if="detail.session.endedAt" class="resume-card"><button class="resume-button" :disabled="!detail.canResume || busy || loading" :loading="resuming" @tap="confirmResume">继续本时段训练</button><text class="hint">{{ detail.canResume ? '误触结束可继续原训练，已登记成绩保留，不重复计算预约次数。' : detail.resumeUnavailableReason }}</text></view>
-        <view class="entry-card">
+        <view v-if="detail.session.endedAt && !detail.session.historical" class="resume-card"><button class="resume-button" :disabled="!detail.canResume || busy || loading" :loading="resuming" @tap="confirmResume">继续本时段训练</button><text class="hint">{{ detail.canResume ? '误触结束可继续原训练，已登记成绩保留，不重复计算预约次数。' : detail.resumeUnavailableReason }}</text></view>
+        <text v-if="detail.session.historical" class="hint">教员补录 · {{ detail.session.recordedByName }} · {{ dateLabel(detail.session.recordedAt) }}。如需更正，请联系教员。</text>
+        <view v-if="!detail.session.historical" class="entry-card">
           <view class="section-title">{{ detail.session.endedAt ? '补登训练成绩' : '登记本轮成绩' }}</view>
           <view class="mode-options"><button v-for="choice in modes" :key="choice.value" class="mode-option" :class="{ selected: mode === choice.value }" :disabled="busy || loading" @tap="changeMode(choice.value)">{{ choice.label }}</button></view>
           <text class="hint">每轮先选择模式，再填写平板显示的分组总成绩。同一时段可交替训练两种模式。</text>

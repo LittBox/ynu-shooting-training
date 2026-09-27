@@ -11,6 +11,14 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/coach/training") @RequiredArgsConstructor
 public class CoachResultsController {
     private final CoachResultsService results;
+    @GetMapping("/members")
+    public ApiResponse<CoachResultsService.Members> members(HttpServletRequest request,@RequestParam(defaultValue="") String search,@RequestParam(defaultValue="0") int page) {
+        return ApiResponse.ok(results.members(request,search,page));
+    }
+    @PostMapping("/history")
+    public ApiResponse<CoachResultsService.Detail> history(HttpServletRequest request,@Valid @RequestBody com.ynu.shoting.dto.HistoricalTrainingRequest body) {
+        return ApiResponse.ok(results.createHistory(request,body));
+    }
     @GetMapping("/days")
     public ApiResponse<CoachResultsService.Days> days(HttpServletRequest request,@RequestParam(defaultValue="0") int page) {
         return ApiResponse.ok(results.days(request,page));

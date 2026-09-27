@@ -41,6 +41,7 @@ public class TrainingResultsService {
         venue.lock();
         TrainingSession session=sessions.findLockedById(id).orElseThrow(()->new BusinessException(404,"训练不存在"));
         requireOwner(user,session);
+        if(session.isHistorical())throw new BusinessException(409,"教员补录的历史成绩请联系教员更正");
         Value value=validate(req);
         var previous=attempts.findBySessionIdAndRequestKey(id,req.getRequestKey());
         if(previous.isPresent()) {
@@ -102,7 +103,7 @@ public class TrainingResultsService {
             result.setMode(mode);
             result.setTotalScore(best.getTotalScore());result.setShotCount(spec.stream().mapToInt(Integer::intValue).sum());
             result.setShotScores(best.getShotScores());result.setGroupScores(best.getGroupScores());result.setGroupSpec(encode(spec));
-            result.setXCount(null);result.setRecordedBy(mode==correctedMode?coach:session.getUser());
+            result.setXCount(null);result.setRecordedBy(mode==correctedMode?coach:(session.isHistorical()?session.getRecordedBy():session.getUser()));
             scores.save(result);
         }
         return scores.findBySessionIdOrderByModeAsc(session.getId());
@@ -113,14 +114,14 @@ public class TrainingResultsService {
         var all=scores.findPublishedByUserId(userId).stream().sorted(Comparator.comparing(Score::getRecordedAt).thenComparing(Score::getId)).toList();
         Map<String,HistoryRow> best=new LinkedHashMap<>();List<HistoryRow> rows=new ArrayList<>();
         for(Score score:all) {
-            String weapon=score.getSession().getDevice().getType().name(),mode=score.getMode().name(),key=weapon+":"+mode;
+            String weapon=score.getSession().weaponType().name(),mode=score.getMode().name(),key=weapon+":"+mode;
             boolean record=!best.containsKey(key)||score.getTotalScore()>best.get(key).totalScore();
             HistoryRow row=new HistoryRow(score.getSession().getId(),weapon,mode,score.getTotalScore(),score.getRecordedAt(),record);
             rows.add(row);if(record)best.put(key,row);
         }
         Collections.reverse(rows);
         Set<Long> scoredIds=new HashSet<>();for(HistoryRow row:rows)scoredIds.add(row.sessionId());
-        var unscored=sessions.findByUserId(userId).stream().filter(s->(s.getBooking().getStatus()==Booking.BookingStatus.IN_USE||s.getBooking().getStatus()==Booking.BookingStatus.COMPLETED)&&!scoredIds.contains(s.getId()))
+        var unscored=sessions.findByUserId(userId).stream().filter(s->s.hasResultsAccess()&&!scoredIds.contains(s.getId()))
                 .sorted(Comparator.comparing(TrainingSession::getStartedAt).reversed()).map(TrainingVO::from).toList();
         return new History(List.copyOf(best.values()),rows,unscored);
     }

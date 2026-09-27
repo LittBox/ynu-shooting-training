@@ -28,8 +28,14 @@ restore_on_failure() {
     result=$?
     trap - EXIT
     if [ "$result" -ne 0 ]; then
-        echo 'Upgrade failed. Restoring previous JAR.' >&2
+        echo 'Upgrade failed. Checking whether the previous JAR can be restored.' >&2
         systemctl stop ynu-shooting || true
+        # Old binaries cannot read standalone historical sessions. Never restart one over those rows.
+        history_rows=$(sudo -u postgres psql -X -A -t -d ynu_shooting -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM "ynu-shooting".training_sessions WHERE booking_id IS NULL;' 2>/dev/null) || history_rows=unknown
+        if [ "$history_rows" != '0' ]; then
+            echo "Historical rows exist or their state cannot be verified. Service left stopped; retain the current JAR and inspect logs. Backup: $backup_dir" >&2
+            exit "$result"
+        fi
         if cp -p "$backup_dir/backend.jar" /opt/ynu-shooting/backend.jar; then
             systemctl start ynu-shooting || echo 'Old JAR restored, but service start failed; inspect systemctl status.' >&2
         else
@@ -45,6 +51,7 @@ chmod 600 "$backup_dir/database.dump"
 test -s "$backup_dir/database.dump"
 echo "Database backup saved to: $backup_dir/database.dump"
 sudo -u postgres psql -X -d ynu_shooting -v ON_ERROR_STOP=1 < migrate-wechat-reminders.sql
+sudo -u postgres psql -X -d ynu_shooting -v ON_ERROR_STOP=1 < migrate-historical-training.sql
 install -o root -g root -m 644 backend.jar /opt/ynu-shooting/backend.jar
 systemctl start ynu-shooting
 
@@ -55,7 +62,7 @@ for attempt in $(seq 1 30); do
             "http://127.0.0.1:8080/api/bookings/slots?date=$query_date" 2>/dev/null |
             grep -q '"code":0'; then
         echo 'Upgrade successful: backend API returned code 0.'
-        echo 'Next: update the mini program and review date cards, daily rankings and session details. Reminder configuration is unchanged.'
+        echo 'Next: update the mini program and verify coach historical entry, daily best scores and student history. Reminder configuration is unchanged.'
         exit 0
     fi
     sleep 2

@@ -5,6 +5,7 @@
       <view v-if="error" class="error-message"><text>{{ error }}</text><button class="text-button" :disabled="busy" @tap="reload">重新加载 ↻</button></view>
       <template v-if="!selectedDate && !selectedId">
         <view class="intro"><text class="eyebrow">ONE DAY AT A TIME</text><view class="page-heading">每天的训练，都有记录</view><text class="hint">选择一天，查看学员成绩与训练过程。</text></view>
+        <button class="primary-button history-entry" :disabled="busy" @tap="openHistoryEntry">＋ 补录历史训练</button>
         <button v-for="day in days" :key="day.date" class="day-card" :disabled="busy" @tap="openDay(day.date)">
           <view class="date-tile"><text>{{ day.date.slice(8) }}</text><text>{{ day.date.slice(0, 7).replace('-', ' / ') }}</text></view>
           <view class="day-copy"><text class="day-title">{{ weekday(day.date) }}<text v-if="day.date === today" class="today-tag">今天</text></text><text class="hint">{{ day.members }} 位学员 · {{ day.sessions }} 次训练</text></view><text class="arrow">↗</text>
@@ -36,6 +37,7 @@
       </template>
       <template v-else-if="detail">
         <view class="card session-overview"><view class="record-header"><text class="eyebrow">{{ detail.results.session.endedAt ? 'SESSION COMPLETE' : 'TRAINING IN PROGRESS' }}</text><text class="tag">{{ detail.results.session.endedAt ? '已结束' : '训练中' }}</text></view><view class="page-heading">{{ detail.member.name }}</view><text class="hint">{{ detail.results.session.deviceName }} · 学号 {{ detail.member.studentNo || '未登记' }}</text>
+          <text v-if="detail.results.session.historical" class="hint">教员补录 · {{ detail.results.session.recordedByName }} · {{ dateLabel(detail.results.session.recordedAt) }}</text>
           <view class="time-grid"><view><text class="small">开始训练</text><text>{{ dateLabel(detail.results.session.startedAt) }}</text></view><view><text class="small">结束训练</text><text>{{ detail.results.session.endedAt ? dateLabel(detail.results.session.endedAt) : '尚未结束' }}</text></view></view>
           <view class="session-facts"><text>共登记 {{ detail.results.attempts.length }} 轮</text><text>{{ detail.results.session.actualDurationMin != null ? '累计训练 ' + detail.results.session.actualDurationMin + ' 分钟' : detail.results.session.endedAt ? '训练时长未记录' : '训练中' }}</text></view>
         </view>
@@ -64,7 +66,7 @@
 </template>
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { onShow, onHide } from '@dcloudio/uni-app'
+import { onShow, onHide, onLoad } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar.vue'
 import RoundTrend from '@/components/RoundTrend.vue'
 import { trainingService } from '@/services/training.js'
@@ -114,6 +116,7 @@ function loadDetail() {
     if (!detailModes.value.includes(chartMode.value)) chartMode.value = detailModes.value[0] || data.results.session.mode
   }, () => { detail.value = null })
 }
+function openHistoryEntry() { uni.navigateTo({ url: '/pages/training/history-entry' }) }
 function openDay(date) { if (busy.value) return; selectedDate.value = date; dayData.value = null; search.value = ''; expanded.value = ''; scrollTop(); loadDay() }
 function openMember(row, group) {
   if (row.sessions.length === 1) open(row.sessions[0].session.id, group.mode)
@@ -151,6 +154,13 @@ function confirmSave() {
     } finally { saving.value = false }
   } })
 }
+onLoad(options => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(options?.date || '')) {
+    selectedDate.value = options.date
+    if (/^\d+$/.test(options?.sessionId || '')) selectedId.value = Number(options.sessionId)
+    viewerToken = uni.getStorageSync('token')
+  }
+})
 onShow(() => {
   today.value = venueToday()
   const token = uni.getStorageSync('token')
@@ -163,6 +173,7 @@ onHide(() => { generation++; loading.value = false })
 .coach-content { padding-top: 28rpx; padding-bottom: 64rpx; }
 .hint { display: block; font-size: 23rpx; line-height: 1.7; color: var(--color-text-soft); margin-top: 10rpx; overflow-wrap: anywhere; }
 .small { display: block; font-size: 20rpx; line-height: 1.6; color: var(--color-text-soft); overflow-wrap: anywhere; }
+.history-entry { margin-bottom: 28rpx; }
 .intro { margin: 10rpx 0 32rpx; }
 .day-card { display: flex; align-items: center; width: 100%; gap: 24rpx; padding: 28rpx 24rpx; margin-bottom: 20rpx; border: 1rpx solid var(--color-border); background: #fff; border-radius: 16rpx; text-align: left; line-height: 1.5; color: var(--color-text); }
 button::after { border: 0; }

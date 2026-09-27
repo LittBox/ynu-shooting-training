@@ -13,15 +13,17 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
         long getMembers();
         long getSessions();
     }
-    @org.springframework.data.jpa.repository.Query("select cast(s.startedAt as LocalDate) as date, count(distinct s.user.id) as members, count(s.id) as sessions from TrainingSession s where s.booking.status in ('COMPLETED','IN_USE') and s.startedAt is not null group by cast(s.startedAt as LocalDate) order by cast(s.startedAt as LocalDate) desc")
+    @org.springframework.data.jpa.repository.Query("select cast(s.startedAt as LocalDate) as date, count(distinct s.user.id) as members, count(s.id) as sessions from TrainingSession s left join s.booking b where (s.historicalWeapon is not null or b.status in ('COMPLETED','IN_USE')) and s.startedAt is not null group by cast(s.startedAt as LocalDate) order by cast(s.startedAt as LocalDate) desc")
     org.springframework.data.domain.Slice<CoachDay> findCoachDays(org.springframework.data.domain.Pageable pageable);
 
-    @org.springframework.data.jpa.repository.Query("select s from TrainingSession s join fetch s.user u left join fetch u.profile join fetch s.device join fetch s.booking where s.booking.status in ('COMPLETED','IN_USE') and s.startedAt >= :start and s.startedAt < :end order by s.startedAt, s.id")
+    @org.springframework.data.jpa.repository.Query("select s from TrainingSession s join fetch s.user u left join fetch u.profile left join fetch s.device left join fetch s.booking b where (s.historicalWeapon is not null or b.status in ('COMPLETED','IN_USE')) and s.startedAt >= :start and s.startedAt < :end order by s.startedAt, s.id")
     List<TrainingSession> findCoachDay(@org.springframework.data.repository.query.Param("start") java.time.LocalDateTime start,
                                       @org.springframework.data.repository.query.Param("end") java.time.LocalDateTime end);
 
-    @org.springframework.data.jpa.repository.Query("select s from TrainingSession s join s.user u left join u.profile p where s.booking.status in ('COMPLETED','IN_USE') and (:search = '' or lower(p.realName) like lower(concat('%', :search, '%')) or p.studentNo like concat('%', :search, '%'))")
+    @org.springframework.data.jpa.repository.Query("select s from TrainingSession s join s.user u left join u.profile p left join s.booking b where (s.historicalWeapon is not null or b.status in ('COMPLETED','IN_USE')) and (:search = '' or lower(p.realName) like lower(concat('%', :search, '%')) or p.studentNo like concat('%', :search, '%'))")
     org.springframework.data.domain.Slice<TrainingSession> findForCoach(@org.springframework.data.repository.query.Param("search") String search, org.springframework.data.domain.Pageable pageable);
+
+    Optional<TrainingSession> findByHistoryRequestKey(String key);
 
     long countByEndedAtIsNull();
 

@@ -1,6 +1,6 @@
 # 数据库设计 v1.0.0
 
-基线：2026-09-26。当前为 **13 张业务表、16 个数据库外键**，统一位于 PostgreSQL `"ynu-shooting"` schema。实际定义见 [建表 SQL](../scripts/schema-postgresql.sql) 与 [实体目录](../src/main/java/com/ynu/shotting/entity)。H2 只用于隔离测试，不是云端业务库。
+基线：2026-09-26；2026-09-27 增补历史训练补录结构。当前为 **13 张业务表、17 个数据库外键**，统一位于 PostgreSQL `"ynu-shooting"` schema。实际定义见 [建表 SQL](../scripts/schema-postgresql.sql) 与 [实体目录](../src/main/java/com/ynu/shotting/entity)。H2 只用于隔离测试，不是云端业务库。
 
 ## 1. 命名、类型与关系
 
@@ -16,9 +16,10 @@ erDiagram
     users ||--o| profiles : profile
     users ||--o{ bookings : books
     devices ||--o{ bookings : reserved_device
-    bookings ||--o| training_sessions : starts
+    bookings o|--o| training_sessions : starts
     users ||--o{ training_sessions : trains
-    devices ||--o{ training_sessions : used_device
+    users o|--o{ training_sessions : historical_recorder
+    devices o|--o{ training_sessions : used_device
     training_sessions ||--o{ score_attempts : rounds
     training_sessions ||--o{ scores : published_by_mode
     users o|--o{ scores : recorded_by
@@ -41,7 +42,7 @@ erDiagram
 | `profiles` | `user_id`、`real_name`、`student_no`、`phone`、`gender`、创建／更新时间 | user_id 共享主键；student_no 唯一；当前提交要求 M/F，旧记录允许缺失／U 待补全 |
 | `devices` | `id`、`name`、`type`、`status`、创建／更新时间 | 枪种 rifle/pistol；状态 IDLE/BOOKED/IN_USE/MAINTENANCE/DISABLED |
 | `bookings` | 用户／设备、日期／时段、`status`、预约／签到／开始／结束时间、取消原因、两个占位字段 | 两个占位字段各自唯一；普通非空外键；设备占位与用户占位释放时机不同 |
-| `training_sessions` | `booking_id`、用户／设备、初始 `mode`、`started_at`、`ended_at`、`resume_started_at`、`actual_duration_min`、`created_at` | booking_id 非空且唯一；一次预约最多一条训练；mode 只是初始默认，轮次可混合模式 |
+| `training_sessions` | `booking_id`、用户／设备、初始 `mode`、`started_at`、`ended_at`、`resume_started_at`、`actual_duration_min`、`created_at` | 普通训练 booking_id 非空且唯一；历史补录 booking_id/device_id 为空，使用 historical_weapon、recorded_by_user_id、history_request_key/hash；CHECK 约束区分来源；mode 为初始默认，轮次可混合 |
 | `score_attempts` | `training_session_id`、`mode`、`request_key`、`total_score`、`group_totals`、`shot_scores`、`group_scores`、`recorded_at` | `(training_session_id,request_key)` 唯一防重试重复；mode 必填；SQL 总分粗校验 0–600，决赛 240 上限由应用进一步校验 |
 | `scores` | `training_session_id`、`mode`、总分、分组均值／逐发数据／分组发数 JSON、发数、X 数、录分人、登记时间 | `(training_session_id,mode)` 唯一；一个训练每种赛制至多一条最终成绩；录分人可空 |
 | `admin_schedules` | `admin_user_id`、日期／时段、`arrived_at`、`departed_at`、`created_at` | `(admin_user_id,slot_date,slot_id)` 唯一；离场需有到岗且离场不早于到岗；不再含 device_id |
@@ -61,6 +62,7 @@ erDiagram
 | `training_sessions.booking_id` | `bookings.id` |
 | `training_sessions.user_id` | `users.id` |
 | `training_sessions.device_id` | `devices.id` |
+| `training_sessions.recorded_by_user_id` | `users.id` |
 | `score_attempts.training_session_id` | `training_sessions.id` |
 | `scores.training_session_id` | `training_sessions.id` |
 | `scores.recorded_by_user_id` | `users.id` |
@@ -130,10 +132,11 @@ erDiagram
 | 4 | `migrate-training-resume.sql` | 增加恢复训练计时字段 |
 | 5 | `migrate-mixed-training-modes.sql` | 回填轮次 mode，最终成绩唯一键改为训练＋模式 |
 | 6 | `migrate-wechat-reminders.sql` | 新增提醒队列及索引 |
+| 7 | `migrate-historical-training.sql` | 历史训练来源、补录教员、幂等键及关联约束 |
 
-以上脚本在项目既有结构前提下设计为可重复执行；必须审阅对应升级脚本的前置检查。当前 `upgrade-coach-daily.sh` 要求已具备混合模式结构，兼容性补齐提醒表后替换 JAR，不代替更早版本全部迁移。
+以上脚本在项目既有结构前提下设计为可重复执行；必须审阅对应升级脚本的前置检查。当前 `upgrade-coach-daily.sh` 要求已具备混合模式结构，补齐提醒表并迁移历史补录结构后替换 JAR，不代替更早版本全部迁移。
 
-混合模式迁移改变 `scores` 的唯一性：旧单模式 JAR 不兼容。该迁移发生后的失败不能只恢复旧 JAR；应先检查原因，再按明确方案恢复配套程序／数据库。当前按日视图与未来预约修复本身没有额外表结构变更。
+混合模式迁移改变 `scores` 的唯一性：旧单模式 JAR 不兼容。该迁移发生后的失败不能只恢复旧 JAR；应先检查原因，再按明确方案恢复配套程序／数据库。当前按日视图与未来预约修复本身没有额外表结构变更。2026-09-27 历史补录需要另行迁移；已有补录数据后旧 JAR 不兼容。
 
 生产使用 `DB_DDL_AUTO=validate`。Hibernate `update` 不能代替列重命名、数据回填或约束替换。当前没有 Flyway/Liquibase 自动版本表，需将执行脚本、时间、哈希和备份位置写入部署记录。
 
@@ -145,3 +148,5 @@ erDiagram
 - `user_availability`、日志等并非全部有防重复唯一键；完整性同时依赖事务与业务校验。
 - 真实数据库文件、SQL dump、备份和含资料日志不入 Git；源码版本回退不自动回退数据库。
 - 当前 SQL 标注 PostgreSQL 14+，实际独立数据库测试使用 PostgreSQL 18；不宣称对所有数据库版本逐一验收。
+
+历史补录详细业务与回退边界见[教员历史训练补录](../../docs/教员历史训练补录.md)。

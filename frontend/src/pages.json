@@ -51,6 +51,13 @@
         "navigationBarTitleText": "学员成绩管理",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/training/history-entry",
+      "style": {
+        "navigationBarTitleText": "补录历史训练",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

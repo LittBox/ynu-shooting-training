@@ -64,6 +64,7 @@ class SchemaIsolationIntegrationTest {
                 java.util.Map.entry("training_sessions.booking_id", "bookings.id"),
                 java.util.Map.entry("training_sessions.device_id", "devices.id"),
                 java.util.Map.entry("training_sessions.user_id", "users.id"),
+                java.util.Map.entry("training_sessions.recorded_by_user_id", "users.id"),
                 java.util.Map.entry("user_availability.user_id", "users.id"));
         var actual = jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<java.util.Map<String, String>>) connection -> {
             var result = new java.util.HashMap<String, String>();

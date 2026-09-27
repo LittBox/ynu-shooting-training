@@ -1,5 +1,7 @@
 import { request } from './request.js'
 export const trainingService = {
+  coachMembers: (search, page = 0) => request(`/api/coach/training/members?search=${encodeURIComponent(search)}&page=${page}`),
+  createHistory: data => request('/api/coach/training/history', { method: 'POST', data }),
   coachDays: (page = 0) => request(`/api/coach/training/days?page=${page}`),
   coachDay: date => request(`/api/coach/training/days/${encodeURIComponent(date)}`),
   coachRecords: (search = '', page = 0) => request(`/api/coach/training?search=${encodeURIComponent(search)}&page=${page}`),

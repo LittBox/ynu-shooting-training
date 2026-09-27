@@ -19,6 +19,7 @@ import java.util.*;
 
 @Service @RequiredArgsConstructor
 public class CoachResultsService {
+    private final UserRepository users;
     private final AuthContext auth;
     private final VenueAccess venue;
     private final TrainingSessionRepository sessions;
@@ -41,6 +42,58 @@ public class CoachResultsService {
     public record DayGroup(String weapon,String mode,List<RankedMember> members) {}
     public record DayResults(LocalDate date,long memberCount,int sessionCount,List<DayGroup> groups) {}
 
+    public record Members(List<Member> members,boolean hasMore) {}
+    @Transactional(readOnly=true)
+    public Members members(HttpServletRequest request,String search,int page) {
+        coach(request);
+        if(search.length()>100 || page<0 || page>100000)throw new BusinessException(400,"查询条件不正确");
+        if(search.isBlank())return new Members(List.of(),false);
+        var slice=users.searchMembers(search.trim(),PageRequest.of(page,20));
+        return new Members(slice.stream().map(this::member).toList(),slice.hasNext());
+    }
+    @Transactional
+    public Detail createHistory(HttpServletRequest request,HistoricalTrainingRequest req) {
+        User editor=coach(request);
+        // Serialize retries by recorder, including on a venue with no devices.
+        users.findLockedById(editor.getId()).orElseThrow();
+        String hash=digest(encode(req));
+        var prior=sessions.findByHistoryRequestKey(req.requestKey());
+        if(prior.isPresent()) {
+            var saved=prior.get();
+            if(!saved.getRecordedBy().getId().equals(editor.getId()) || !hash.equals(saved.getHistoryRequestHash()))
+                throw new BusinessException(409,"此补录请求已保存，内容不一致，请核对历史记录");
+            return detail(saved);
+        }
+        if(!req.endedAt().isAfter(req.startedAt()) || req.endedAt().isAfter(LocalDateTime.now(clock)) || req.startedAt().getYear()<1900)
+            throw new BusinessException(400,"请填写有效的历史起止时间，结束须晚于开始且不能在未来");
+        long duration=Duration.between(req.startedAt(),req.endedAt()).toMinutes();
+        if(duration>Integer.MAX_VALUE)throw new BusinessException(400,"训练时长超出范围");
+        User student=users.findById(req.userId()).orElseThrow(()->new BusinessException(404,"学员不存在"));
+        if(student.getProfileStatus()!=User.ProfileStatus.completed || student.getProfile()==null)
+            throw new BusinessException(400,"请选择已完善资料的学员");
+        List<TrainingResultsService.Value> values=new ArrayList<>();
+        for(var round:req.rounds()) {
+            var input=new ScoreAttemptRequest();input.setMode(round.mode());input.setGroupTotals(round.groupTotals());
+            values.add(results.validate(input));
+        }
+        LocalDateTime now=LocalDateTime.now(clock);
+        var session=sessions.saveAndFlush(TrainingSession.builder().user(student)
+                .historicalWeapon(Device.DeviceType.valueOf(req.weapon())).recordedBy(editor)
+                .historyRequestKey(req.requestKey()).historyRequestHash(hash)
+                .mode(TrainingSession.SessionMode.valueOf(req.rounds().getFirst().mode()))
+                .startedAt(req.startedAt()).endedAt(req.endedAt()).actualDurationMin((int)Math.max(1,duration)).createdAt(now).build());
+        for(int i=0;i<values.size();i++) {
+            var value=values.get(i);
+            attempts.save(ScoreAttempt.builder().session(session).mode(Score.ScoreMode.valueOf(req.rounds().get(i).mode()))
+                    .requestKey("history-"+i).totalScore(value.total()).groupTotals(value.totals())
+                    .shotScores("[]").groupScores(value.groups()).recordedAt(now).build());
+        }
+        results.finalizeBest(session);
+        audits.save(AuditLog.builder().admin(editor).action("CREATE_HISTORICAL_TRAINING").targetUserId(student.getId())
+                .detail(encode(Map.of("sessionId",session.getId(),"input",req))).createdAt(now).build());
+        return detail(session);
+    }
+
     @Transactional(readOnly=true)
     public Days days(HttpServletRequest request,int page) {
         coach(request);
@@ -62,7 +115,7 @@ public class CoachResultsService {
             Map<Long,List<DaySession>> perMember=new LinkedHashMap<>();
             Map<Long,Member> members=new HashMap<>();
             for(var session:daySessions) {
-                if(session.getDevice().getType()!=weapon)continue;
+                if(session.weaponType()!=weapon)continue;
                 var allRounds=byAttempt.getOrDefault(session.getId(),List.of());
                 var published=byScore.getOrDefault(session.getId(),List.of());
                 var rounds=allRounds.stream().filter(a->a.getMode()==mode).toList();
@@ -99,7 +152,7 @@ public class CoachResultsService {
     private User coach(HttpServletRequest request) {
         User user=auth.currentUser(request);
         if(user.getRole()!=User.Role.admin && user.getRole()!=User.Role.superadmin)
-            throw new BusinessException(403,"仅教练员可查看和更正学员成绩");
+            throw new BusinessException(403,"仅教练员可管理学员成绩");
         return user;
     }
     private Member member(User user) {
@@ -125,14 +178,14 @@ public class CoachResultsService {
         for(var s:scores.findBySessionIdOrderByModeAsc(session.getId()))
             if(!backedByRound(s,rounds))
                 editable.add(new Editable(s.getId(),s.getMode().name(),s.getTotalScore(),null,state(s),true));
-        return new Detail(member(session.getUser()),results.detail(session),editable,session.getDevice().getType().name());
+        return new Detail(member(session.getUser()),results.detail(session),editable,session.weaponType().name());
     }
     @Transactional
     public Detail correct(HttpServletRequest request,Long id,Long recordId,boolean legacy,ScoreCorrectionRequest req) {
         User editor=coach(request);
         venue.lock();
         TrainingSession session=sessions.findLockedById(id).orElseThrow(()->new BusinessException(404,"训练不存在"));
-        if(session.getBooking().getStatus()!=Booking.BookingStatus.COMPLETED && session.getBooking().getStatus()!=Booking.BookingStatus.IN_USE)
+        if(!session.hasResultsAccess())
             throw new BusinessException(409,"当前训练状态不可更正成绩");
         Object before,after;
         if(legacy) {

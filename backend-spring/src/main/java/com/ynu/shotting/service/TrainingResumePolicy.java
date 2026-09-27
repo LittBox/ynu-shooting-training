@@ -13,6 +13,7 @@ public class TrainingResumePolicy {
     private final VenueDutyService duty;
     private final Clock clock;
     public String reason(TrainingSession session) {
+        if(session.isHistorical())return "历史补录训练不能恢复，请预约新的训练";
         Booking b=session.getBooking();
         if(b.getStatus()!=Booking.BookingStatus.COMPLETED || session.getEndedAt()==null)return "仅已结束的训练可以继续";
         LocalDate date=LocalDate.parse(b.getSlotDate());

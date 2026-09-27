@@ -103,6 +103,7 @@ public class TrainingServiceImpl implements TrainingService {
         if (admin.getRole()==User.Role.student) throw new BusinessException(403,"仅管理员可录入成绩");
         venue.lock();
         TrainingSession session=sessions.findLockedById(req.getSessionId()).orElseThrow(() -> new BusinessException(404,"训练记录不存在"));
+        if(session.isHistorical())throw new BusinessException(409,"历史补录成绩请通过教员成绩管理更正");
         if (session.getEndedAt()==null || session.getBooking().getStatus()!=Booking.BookingStatus.COMPLETED)
             throw new BusinessException(409,"训练完成后才能录入成绩");
         String mode=req.getMode()==null ? session.getMode().name() : req.getMode();
